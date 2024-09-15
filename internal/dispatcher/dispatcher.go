@@ -9,17 +9,28 @@ import (
 	"github.com/agnivade/levenshtein"
 	"github.com/dghubble/trie"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"ole-bot/internal/openai"
 )
+
+// Deps is a carrier of dependencies for event dispatcher.
+type Deps struct {
+	OpenAiClient *openai.Client
+}
 
 // EventDispatcher dispatches commands according to command prefixes and other heuristics.
 // Command inputs are handled via fuzzy search.
 type EventDispatcher struct {
+	openAiClient *openai.Client
+
 	commandTrie atomic.Pointer[trie.RuneTrie]
 }
 
 // NewEventDispatcher creates EventDispatcher instance with built command trie.
-func NewEventDispatcher() (*EventDispatcher, error) {
-	ed := &EventDispatcher{}
+func NewEventDispatcher(deps Deps) (*EventDispatcher, error) {
+	ed := &EventDispatcher{
+		openAiClient: deps.OpenAiClient,
+	}
 	if err := ed.buildTrie(); err != nil {
 		return nil, err
 	}
@@ -35,6 +46,50 @@ func (ed *EventDispatcher) buildTrie() error {
 
 	ed.commandTrie.Store(commandTrie)
 	return nil
+}
+
+func (ed *EventDispatcher) DispatchMessage(ctx context.Context, message *tgbotapi.Message) string {
+	if message.IsCommand() {
+		return ed.handleCommand(ctx, message)
+	}
+
+	return ""
+}
+
+func (ed *EventDispatcher) handleCommand(ctx context.Context, message *tgbotapi.Message) string {
+	parsedCommands, exact := ed.getRelevantCommands(message.CommandWithAt())
+	if !exact {
+		return handleIncorrectCommand(ctx, parsedCommands)
+	}
+	command := parsedCommands[0]
+
+	if reply, ok := constantReplies[command]; ok {
+		return reply
+	}
+	message.CommandArguments()
+
+	switch command {
+	case SingleGptMessageCommand:
+		response, err := ed.openAiClient.CompleteChat(ctx, &openai.CompleteChatData{
+			User:    message.Chat.UserName,
+			Content: message.CommandArguments(),
+		})
+		if err != nil {
+			return fmt.Sprintf("Не удалось отправить сообщение \n(%s)", err)
+		}
+
+		return response
+	}
+
+	return ""
+}
+
+func handleIncorrectCommand(_ context.Context, parsedCommands []Command) string {
+	if len(parsedCommands) == 0 {
+		return fmt.Sprintf("Не понимаю команду")
+	}
+
+	return fmt.Sprintf("Возможно вы имели в виду что-то из этого: %s", strings.Join(commandList(parsedCommands), ", "))
 }
 
 func (ed *EventDispatcher) getRelevantCommands(command string) ([]Command, bool) {
@@ -55,34 +110,4 @@ func (ed *EventDispatcher) getRelevantCommands(command string) ([]Command, bool)
 	})
 
 	return closestCommands, false
-}
-
-func (ed *EventDispatcher) DispatchMessage(ctx context.Context, message *tgbotapi.Message) string {
-	if message.IsCommand() {
-		return ed.handleCommand(ctx, message)
-	}
-
-	return ""
-}
-
-func (ed *EventDispatcher) handleCommand(ctx context.Context, message *tgbotapi.Message) string {
-	parsedCommands, exact := ed.getRelevantCommands(message.CommandWithAt())
-	if !exact {
-		return handleIncorrectCommand(ctx, parsedCommands)
-	}
-	command := commands[0]
-
-	if reply, ok := constantReplies[command]; ok {
-		return reply
-	}
-
-	return ""
-}
-
-func handleIncorrectCommand(_ context.Context, parsedCommands []Command) string {
-	if len(parsedCommands) == 0 {
-		return fmt.Sprintf("Не понимаю команду")
-	}
-
-	return fmt.Sprintf("Возможно вы имели в виду что-то из этого: %s", strings.Join(commandList(parsedCommands), ", "))
 }

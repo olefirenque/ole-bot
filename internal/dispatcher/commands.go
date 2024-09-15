@@ -10,13 +10,14 @@ import (
 type Command string
 
 const (
-	HelloCommand Command = "hello"
-	AboutCommand Command = "about"
-	HelpCommand  Command = "help"
+	HelloCommand            Command = "hello"
+	AboutCommand            Command = "about"
+	HelpCommand             Command = "help"
+	SingleGptMessageCommand Command = "gpt_message"
 )
 
 var commands = []Command{
-	HelloCommand, AboutCommand, HelpCommand,
+	HelloCommand, AboutCommand, HelpCommand, SingleGptMessageCommand,
 }
 
 var constantReplies = map[Command]string{

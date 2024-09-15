@@ -9,6 +9,7 @@ import (
 
 	"ole-bot/internal/closer"
 	"ole-bot/internal/dispatcher"
+	"ole-bot/internal/openai"
 	"ole-bot/internal/telegram"
 )
 
@@ -23,7 +24,13 @@ func main() {
 		return nil
 	})
 
-	eventDispatcher, err := dispatcher.NewEventDispatcher()
+	openAiClient := openai.NewClient(
+		openai.Opts{ApiKey: envFile["OPENAI_API_KEY"]},
+	)
+
+	eventDispatcher, err := dispatcher.NewEventDispatcher(
+		dispatcher.Deps{OpenAiClient: openAiClient},
+	)
 	if err != nil {
 		log.Fatalf("failed to init event dispatcher: %s", err)
 	}
