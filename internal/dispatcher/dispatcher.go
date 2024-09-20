@@ -50,7 +50,7 @@ func (ed *EventDispatcher) buildTrie() error {
 }
 
 func (ed *EventDispatcher) DispatchMessage(ctx context.Context, message *tgbotapi.Message) string {
-	ctx, cancel := context.WithTimeout(ctx, time.Second/2)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	if message.IsCommand() {

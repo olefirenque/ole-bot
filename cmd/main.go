@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"log/slog"
+	"net/url"
 	"syscall"
 
 	"github.com/joho/godotenv"
@@ -25,9 +28,16 @@ func main() {
 		return nil
 	})
 
+	rawProxyURL := envFile["OPENAI_PROXY_URL"]
+	proxyURL, err := url.Parse(rawProxyURL)
+	if err != nil {
+		slog.WarnContext(ctx, fmt.Sprintf("failed to to parse OPENAI_PROXY_URL (val=`%s`): %s", rawProxyURL, err))
+	}
+
 	openAiClient := openai.NewClient(
 		openai.Opts{
-			ApiKey: envFile["OPENAI_API_KEY"],
+			ApiKey:   envFile["OPENAI_API_KEY"],
+			ProxyURL: proxyURL,
 			RlOpts: ratelimiter.Opts{
 				PerUserLimit: 1,
 				GlobalLimit:  5,

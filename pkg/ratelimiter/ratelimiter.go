@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -29,7 +30,12 @@ func NewRatelimiter(opts Opts) *Ratelimiter {
 	}
 }
 
+const quotaWaitTimeout = time.Second
+
 func (rl *Ratelimiter) Allow(ctx context.Context, user string) bool {
+	ctx, cancel := context.WithTimeout(ctx, quotaWaitTimeout)
+	defer cancel()
+
 	if err := rl.getOrInitPULimiter(user).Wait(ctx); err != nil {
 		slog.WarnContext(ctx, "cancelled while waiting for per user ratelimit quota")
 		return false
