@@ -11,6 +11,7 @@ import (
 	"ole-bot/internal/dispatcher"
 	"ole-bot/internal/openai"
 	"ole-bot/internal/telegram"
+	"ole-bot/pkg/ratelimiter"
 )
 
 func main() {
@@ -25,7 +26,13 @@ func main() {
 	})
 
 	openAiClient := openai.NewClient(
-		openai.Opts{ApiKey: envFile["OPENAI_API_KEY"]},
+		openai.Opts{
+			ApiKey: envFile["OPENAI_API_KEY"],
+			RlOpts: ratelimiter.Opts{
+				PerUserLimit: 1,
+				GlobalLimit:  5,
+			},
+		},
 	)
 
 	eventDispatcher, err := dispatcher.NewEventDispatcher(

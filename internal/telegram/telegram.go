@@ -62,13 +62,20 @@ func (b *Bot) Listen(ctx context.Context) {
 				slog.WarnContext(ctx, "got empty message in update", "update_id", update.UpdateID)
 				continue
 			}
-			response := b.eventDispatcher.DispatchMessage(ctx, update.Message)
 
 			slog.InfoContext(ctx, fmt.Sprintf("[%s] %s", update.Message.From.UserName, update.Message.Text))
+
+			response := b.eventDispatcher.DispatchMessage(ctx, update.Message)
+			if len(response) == 0 {
+				continue
+			}
+
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, response)
 			msg.ReplyToMessageID = update.Message.MessageID
 
-			b.api.Send(msg)
+			if _, err := b.api.Send(msg); err != nil {
+				slog.ErrorContext(ctx, fmt.Sprintf("[%s] failed to answer user: %s", update.Message.From.UserName, err))
+			}
 		}
 	}
 }

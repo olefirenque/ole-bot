@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/agnivade/levenshtein"
 	"github.com/dghubble/trie"
@@ -40,7 +41,7 @@ func NewEventDispatcher(deps Deps) (*EventDispatcher, error) {
 
 func (ed *EventDispatcher) buildTrie() error {
 	commandTrie := trie.NewRuneTrie()
-	for _, command := range commands {
+	for _, command := range globalCommandList {
 		commandTrie.Put(string(command), command)
 	}
 
@@ -49,6 +50,9 @@ func (ed *EventDispatcher) buildTrie() error {
 }
 
 func (ed *EventDispatcher) DispatchMessage(ctx context.Context, message *tgbotapi.Message) string {
+	ctx, cancel := context.WithTimeout(ctx, time.Second/2)
+	defer cancel()
+
 	if message.IsCommand() {
 		return ed.handleCommand(ctx, message)
 	}
@@ -59,14 +63,17 @@ func (ed *EventDispatcher) DispatchMessage(ctx context.Context, message *tgbotap
 func (ed *EventDispatcher) handleCommand(ctx context.Context, message *tgbotapi.Message) string {
 	parsedCommands, exact := ed.getRelevantCommands(message.CommandWithAt())
 	if !exact {
-		return handleIncorrectCommand(ctx, parsedCommands)
-	}
-	command := parsedCommands[0]
+		if len(parsedCommands) == 0 {
+			return unexpectedCommandReply
+		}
 
+		return clarifyCommandReply(parsedCommands)
+	}
+
+	command := parsedCommands[0]
 	if reply, ok := constantReplies[command]; ok {
 		return reply
 	}
-	message.CommandArguments()
 
 	switch command {
 	case SingleGptMessageCommand:
@@ -75,21 +82,13 @@ func (ed *EventDispatcher) handleCommand(ctx context.Context, message *tgbotapi.
 			Content: message.CommandArguments(),
 		})
 		if err != nil {
-			return fmt.Sprintf("Не удалось отправить сообщение \n(%s)", err)
+			return gptErrorReply(err)
 		}
 
 		return response
 	}
 
 	return ""
-}
-
-func handleIncorrectCommand(_ context.Context, parsedCommands []Command) string {
-	if len(parsedCommands) == 0 {
-		return fmt.Sprintf("Не понимаю команду")
-	}
-
-	return fmt.Sprintf("Возможно вы имели в виду что-то из этого: %s", strings.Join(commandList(parsedCommands), ", "))
 }
 
 func (ed *EventDispatcher) getRelevantCommands(command string) ([]Command, bool) {
@@ -110,4 +109,18 @@ func (ed *EventDispatcher) getRelevantCommands(command string) ([]Command, bool)
 	})
 
 	return closestCommands, false
+}
+
+const (
+	unexpectedCommandReply = "Не понимаю команду :("
+)
+
+func clarifyCommandReply(parsedCommands []Command) string {
+	similarCommands := strings.Join(buildCommandList(parsedCommands), ", ")
+
+	return fmt.Sprintf("Возможно вы имели в виду что-то из этого: %s", similarCommands)
+}
+
+func gptErrorReply(err error) string {
+	return fmt.Sprintf("Не удалось отправить сообщение \n(%s)", err)
 }
